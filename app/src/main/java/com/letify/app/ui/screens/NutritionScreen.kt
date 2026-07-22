@@ -41,6 +41,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -223,8 +224,8 @@ private fun iconFor(ml: Int): String = when {
 }
 
 /**
- * 3D tumbler glass — tapered body, soft rim, water with depth gradient +
- * elliptical surface, left specular highlight.
+ * Theme-aware 3D tumbler. Empty glass is a soft translucent shell (no black
+ * mass in light theme). Water has depth gradient + surface ellipse + shine.
  */
 @Composable
 private fun WaterGlass(
@@ -238,17 +239,26 @@ private fun WaterGlass(
     }
     val fill = anim.value.coerceIn(0f, 1f)
     val water = LetifyColors.Water
+    val isDark = Letify.colors.isDark
+
+    // Empty-glass shell — never pure black. Light theme gets a cool translucent
+    // grey-blue; dark theme a soft elevated surface.
+    val shellTop = if (isDark) Color(0xFF2C3340) else Color(0xFFD8E2F0)
+    val shellMid = if (isDark) Color(0xFF222833) else Color(0xFFC5D3E6)
+    val shellBot = if (isDark) Color(0xFF1A1F28) else Color(0xFFB4C6DC)
+    val sideShade = if (isDark) Color.Black.copy(alpha = 0.22f) else Color(0xFF6B849E).copy(alpha = 0.18f)
+    val shine = if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.55f)
+    val rimColor = if (isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.7f)
 
     Canvas(modifier) {
         val w = size.width
         val h = size.height
 
-        // Real glass proportions: wider at top, rounded bottom.
-        val topPad = w * 0.10f
-        val botPad = w * 0.22f
-        val topY = h * 0.06f
-        val botY = h * 0.94f
-        val rimH = h * 0.045f
+        val topPad = w * 0.11f
+        val botPad = w * 0.23f
+        val topY = h * 0.07f
+        val botY = h * 0.93f
+        val rimH = h * 0.05f
 
         val glassPath = Path().apply {
             moveTo(topPad, topY + rimH)
@@ -262,29 +272,25 @@ private fun WaterGlass(
             close()
         }
 
-        // Glass body — cool dark gradient
+        // Shell body
         drawPath(
             path = glassPath,
             brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color(0xFF2A2F3A),
-                    Color(0xFF1A1E28),
-                    Color(0xFF141820),
-                ),
+                colors = listOf(shellTop, shellMid, shellBot),
                 startY = topY,
                 endY = botY,
             ),
         )
 
-        // Side darkening for cylindrical depth
+        // Cylindrical side shading
         clipPath(glassPath) {
             drawRect(
                 brush = Brush.horizontalGradient(
                     colorStops = arrayOf(
-                        0f to Color.Black.copy(alpha = 0.28f),
-                        0.18f to Color.Transparent,
-                        0.82f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.28f),
+                        0f to sideShade,
+                        0.16f to Color.Transparent,
+                        0.84f to Color.Transparent,
+                        1f to sideShade,
                     ),
                 ),
             )
@@ -293,16 +299,16 @@ private fun WaterGlass(
         // Water
         if (fill > 0.001f) {
             val waterTop = botY - (botY - topY - rimH) * fill
-            val surfRy = w * 0.055f
+            val surfRy = w * 0.05f
             val t = ((waterTop - topY) / (botY - topY)).coerceIn(0f, 1f)
-            val leftAtTop = topPad + (botPad - topPad) * t
-            val rightAtTop = w - leftAtTop
+            val leftAt = topPad + (botPad - topPad) * t
+            val rightAt = w - leftAt
 
             clipPath(glassPath) {
                 drawRect(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            water.copy(alpha = 0.85f),
+                            water.copy(alpha = 0.75f),
                             water,
                             Color(0xFF2B7FD4),
                         ),
@@ -312,29 +318,29 @@ private fun WaterGlass(
                     topLeft = Offset(0f, waterTop),
                     size = Size(w, botY - waterTop + 2f),
                 )
-                // Elliptical water surface
+                // Surface ellipse
                 drawOval(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.35f),
-                            water.copy(alpha = 0.9f),
+                            Color.White.copy(alpha = if (isDark) 0.30f else 0.45f),
+                            water.copy(alpha = 0.85f),
                         ),
                     ),
-                    topLeft = Offset(leftAtTop, waterTop - surfRy),
-                    size = Size(rightAtTop - leftAtTop, surfRy * 2f),
+                    topLeft = Offset(leftAt, waterTop - surfRy),
+                    size = Size(rightAt - leftAt, surfRy * 2f),
                 )
             }
         }
 
-        // Specular highlight
+        // Specular highlight strip
         clipPath(glassPath) {
             drawRect(
                 brush = Brush.horizontalGradient(
                     colorStops = arrayOf(
-                        0.08f to Color.Transparent,
-                        0.16f to Color.White.copy(alpha = 0.18f),
-                        0.22f to Color.White.copy(alpha = 0.07f),
-                        0.30f to Color.Transparent,
+                        0.10f to Color.Transparent,
+                        0.18f to shine,
+                        0.24f to shine.copy(alpha = shine.alpha * 0.35f),
+                        0.32f to Color.Transparent,
                     ),
                 ),
             )
@@ -342,14 +348,14 @@ private fun WaterGlass(
 
         // Top rim
         drawOval(
-            color = Color.White.copy(alpha = 0.10f),
+            color = rimColor,
             topLeft = Offset(topPad, topY),
-            size = Size(w - topPad * 2f, rimH * 1.1f),
+            size = Size(w - topPad * 2f, rimH * 1.15f),
         )
         drawOval(
-            color = Color.White.copy(alpha = 0.06f),
-            topLeft = Offset(topPad + 2f, topY + rimH * 0.35f),
-            size = Size(w - topPad * 2f - 4f, rimH * 0.7f),
+            color = rimColor.copy(alpha = rimColor.alpha * 0.5f),
+            topLeft = Offset(topPad + 2f, topY + rimH * 0.3f),
+            size = Size(w - topPad * 2f - 4f, rimH * 0.75f),
             style = Stroke(width = 1.5f),
         )
     }
@@ -358,12 +364,10 @@ private fun WaterGlass(
 /**
  * Telegram-style amount slider.
  *
- * Geometry:
- *  - thick fully-rounded track
- *  - filled capsule ends at the RIGHT EDGE of the knob (dot never sticks out)
- *  - speech-bubble value with downward tail
- *  - fraction tracks finger continuously; committed мл snaps to [stepMl]
- *  - displayed number animates smoothly between steps
+ *  - fill capsule fully contains the white knob (right edge = knobCenter + endR)
+ *  - speech bubble is a single continuous path (no tail seam/gap)
+ *  - bubble tilts slightly while dragging ("живая")
+ *  - number animates smoothly; committed value snaps to [stepMl]
  */
 @Composable
 private fun WaterAmountSlider(
@@ -383,18 +387,27 @@ private fun WaterAmountSlider(
         )
     }
 
-    // Smooth displayed number
+    // Tilt of the bubble while dragging (degrees). Springs back to 0 on release.
+    val tilt = remember { Animatable(0f) }
+    var dragging by remember { mutableStateOf(false) }
+
     val displayAnim = remember { Animatable(valueMl.toFloat()) }
     LaunchedEffect(valueMl) {
-        displayAnim.animateTo(valueMl.toFloat(), animationSpec = tween(durationMillis = 120))
+        displayAnim.animateTo(valueMl.toFloat(), animationSpec = tween(durationMillis = 100))
     }
     val displayMl = displayAnim.value.roundToInt()
 
-    // Parent reset after add
     LaunchedEffect(valueMl) {
         val expected = ((valueMl - minMl).toFloat() / (maxMl - minMl).toFloat()).coerceIn(0f, 1f)
         if (kotlin.math.abs(expected - fraction) > 0.02f) {
             fraction = expected
+        }
+    }
+
+    // Settle tilt when not dragging
+    LaunchedEffect(dragging) {
+        if (!dragging) {
+            tilt.animateTo(0f, animationSpec = tween(durationMillis = 220))
         }
     }
 
@@ -403,10 +416,18 @@ private fun WaterAmountSlider(
         return stepped.coerceIn(minMl, maxMl)
     }
 
-    fun applyFraction(f: Float) {
+    fun applyFraction(f: Float, fromDrag: Boolean = true) {
+        val prev = fraction
         val clamped = f.coerceIn(0f, 1f)
         fraction = clamped
         onValueChange(snapMl(minMl + clamped * (maxMl - minMl)))
+        if (fromDrag) {
+            // Tilt toward the direction of movement, clamped to ±12°
+            val delta = (clamped - prev) * 180f
+            val target = (tilt.value * 0.6f + delta).coerceIn(-12f, 12f)
+            // Snap tilt immediately during drag for responsiveness
+            // (animateTo would lag behind the finger).
+        }
     }
 
     val trackH = 28.dp
@@ -414,35 +435,71 @@ private fun WaterAmountSlider(
     val endRpx = with(density) { (trackH / 2).toPx() }
     val knobRpx = with(density) { (knobSize / 2).toPx() }
 
+    // Keep last drag delta for tilt via a mutable state updated in gesture
+    var lastDelta by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(lastDelta, dragging) {
+        if (dragging) {
+            val target = (lastDelta * 140f).coerceIn(-12f, 12f)
+            tilt.snapTo(target)
+        }
+    }
+
     Column(modifier.fillMaxWidth()) {
-        // Speech bubble with tail
-        Box(Modifier.fillMaxWidth().height(44.dp)) {
+        // Speech bubble — single path with integrated tail (no seam)
+        Box(Modifier.fillMaxWidth().height(48.dp)) {
             if (trackWidthPx > 0f) {
                 val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
                 val knobCenterPx = endRpx + fraction * travel
-                val bubbleW = with(density) { 72.dp.toPx() }
-                val bubbleH = with(density) { 30.dp.toPx() }
-                val tailH = with(density) { 7.dp.toPx() }
-                val bubbleLeft = (knobCenterPx - bubbleW / 2f)
-                    .coerceIn(0f, (trackWidthPx - bubbleW).coerceAtLeast(0f))
+                val bubbleWpx = with(density) { 76.dp.toPx() }
+                val bubbleHpx = with(density) { 32.dp.toPx() }
+                val tailHpx = with(density) { 8.dp.toPx() }
+                val bubbleLeft = (knobCenterPx - bubbleWpx / 2f)
+                    .coerceIn(0f, (trackWidthPx - bubbleWpx).coerceAtLeast(0f))
+                val tiltDeg = tilt.value
 
-                Canvas(Modifier.fillMaxWidth().height(44.dp)) {
-                    val r = 14.dp.toPx()
+                Canvas(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .graphicsLayer {
+                            rotationZ = tiltDeg
+                            // Pivot around the tail tip so the bubble "leans"
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
+                                (knobCenterPx / trackWidthPx).coerceIn(0f, 1f),
+                                1f,
+                            )
+                        },
+                ) {
+                    val r = 16.dp.toPx()
+                    val left = bubbleLeft
+                    val right = bubbleLeft + bubbleWpx
+                    val top = 2.dp.toPx()
+                    val bottom = top + bubbleHpx
+                    val tipX = knobCenterPx.coerceIn(left + r + 4.dp.toPx(), right - r - 4.dp.toPx())
+                    val tailHalf = 7.dp.toPx()
+
+                    // ONE continuous path: rounded body with the tail replacing
+                    // a section of the bottom edge — eliminates the AA gap.
                     val path = Path().apply {
-                        addRoundRect(
-                            RoundRect(
-                                left = bubbleLeft,
-                                top = 0f,
-                                right = bubbleLeft + bubbleW,
-                                bottom = bubbleH,
-                                cornerRadius = CornerRadius(r, r),
-                            ),
-                        )
-                        val tipX = knobCenterPx.coerceIn(bubbleLeft + r, bubbleLeft + bubbleW - r)
-                        val base = 6.dp.toPx()
-                        moveTo(tipX - base, bubbleH - 0.5f)
-                        lineTo(tipX, bubbleH + tailH)
-                        lineTo(tipX + base, bubbleH - 0.5f)
+                        // Start just after the tail on the bottom edge, go clockwise
+                        moveTo(tipX + tailHalf, bottom)
+                        // bottom-right corner
+                        lineTo(right - r, bottom)
+                        quadraticBezierTo(right, bottom, right, bottom - r)
+                        // right side → top-right
+                        lineTo(right, top + r)
+                        quadraticBezierTo(right, top, right - r, top)
+                        // top edge → top-left
+                        lineTo(left + r, top)
+                        quadraticBezierTo(left, top, left, top + r)
+                        // left side → bottom-left
+                        lineTo(left, bottom - r)
+                        quadraticBezierTo(left, bottom, left + r, bottom)
+                        // bottom edge to tail
+                        lineTo(tipX - tailHalf, bottom)
+                        // tail tip
+                        lineTo(tipX, bottom + tailHpx)
+                        // back to start
                         close()
                     }
                     drawPath(path, color = LetifyColors.Water)
@@ -451,10 +508,17 @@ private fun WaterAmountSlider(
                 Box(
                     Modifier
                         .offset {
-                            IntOffset(bubbleLeft.roundToInt(), with(density) { 4.dp.roundToPx() })
+                            IntOffset(
+                                bubbleLeft.roundToInt(),
+                                with(density) { 6.dp.roundToPx() },
+                            )
                         }
-                        .width(with(density) { bubbleW.toDp() })
-                        .height(with(density) { (bubbleH - 4.dp.toPx()).toDp() }),
+                        .width(with(density) { bubbleWpx.toDp() })
+                        .height(with(density) { (bubbleHpx - 2.dp.toPx()).toDp() })
+                        .graphicsLayer {
+                            rotationZ = tiltDeg
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -476,18 +540,28 @@ private fun WaterAmountSlider(
                 .pointerInput(minMl, maxMl, stepMl) {
                     detectHorizontalDragGestures(
                         onDragStart = { offset ->
+                            dragging = true
                             if (trackWidthPx > 0f) {
                                 val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
-                                applyFraction((offset.x - endRpx) / travel)
+                                val f = ((offset.x - endRpx) / travel).coerceIn(0f, 1f)
+                                lastDelta = 0f
+                                fraction = f
+                                onValueChange(snapMl(minMl + f * (maxMl - minMl)))
                             }
                         },
-                        onHorizontalDrag = { change, _ ->
+                        onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             if (trackWidthPx > 0f) {
                                 val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
-                                applyFraction((change.position.x - endRpx) / travel)
+                                val prev = fraction
+                                val f = ((change.position.x - endRpx) / travel).coerceIn(0f, 1f)
+                                lastDelta = f - prev
+                                fraction = f
+                                onValueChange(snapMl(minMl + f * (maxMl - minMl)))
                             }
                         },
+                        onDragEnd = { dragging = false },
+                        onDragCancel = { dragging = false },
                     )
                 },
             contentAlignment = Alignment.CenterStart,
@@ -500,11 +574,12 @@ private fun WaterAmountSlider(
                     .background(Letify.colors.container, RoundedCornerShape(999.dp)),
             )
 
-            // Fill ends at the RIGHT EDGE of the knob
+            // Fill fully contains the knob: right edge = knobCenter + endR
+            // (end-cap of the pill), same geometry as Telegram stars slider.
             val fillWidthPx = if (trackWidthPx > 0f) {
                 val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
                 val knobCenter = endRpx + fraction * travel
-                (knobCenter + knobRpx).coerceIn(endRpx * 2f, trackWidthPx)
+                (knobCenter + endRpx).coerceIn(endRpx * 2f, trackWidthPx)
             } else 0f
             if (fillWidthPx > 0f) {
                 Box(
@@ -515,7 +590,7 @@ private fun WaterAmountSlider(
                 )
             }
 
-            // Knob
+            // Knob — fully inside the fill
             Box(
                 Modifier
                     .offset {
