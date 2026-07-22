@@ -35,10 +35,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -219,8 +223,8 @@ private fun iconFor(ml: Int): String = when {
 }
 
 /**
- * Soft rounded glass — continuous U-curve silhouette (no sharp corners),
- * flat fill, no outline / wave / highlight.
+ * 3D tumbler glass — tapered body, soft rim, water with depth gradient +
+ * elliptical surface, left specular highlight.
  */
 @Composable
 private fun WaterGlass(
@@ -230,63 +234,136 @@ private fun WaterGlass(
     val sanitized = progress.coerceIn(0f, 1.2f)
     val anim = remember { Animatable(sanitized) }
     LaunchedEffect(sanitized) {
-        anim.animateTo(sanitized, animationSpec = tween(durationMillis = 600))
+        anim.animateTo(sanitized, animationSpec = tween(durationMillis = 650))
     }
     val fill = anim.value.coerceIn(0f, 1f)
     val water = LetifyColors.Water
-    val empty = water.copy(alpha = 0.12f)
 
     Canvas(modifier) {
         val w = size.width
         val h = size.height
-        // Fully rounded tumbler: top is a soft capsule lip, bottom is a deep
-        // continuous curve — no hard corners.
-        val topInset = w * 0.14f
-        val bottomInset = w * 0.20f
-        val topY = h * 0.05f
-        val bottomY = h * 0.95f
-        val topR = (w - topInset * 2f) * 0.18f
-        val bottomR = (w - bottomInset * 2f) * 0.42f
+
+        // Real glass proportions: wider at top, rounded bottom.
+        val topPad = w * 0.10f
+        val botPad = w * 0.22f
+        val topY = h * 0.06f
+        val botY = h * 0.94f
+        val rimH = h * 0.045f
 
         val glassPath = Path().apply {
-            // Top-left rounded corner → top edge → top-right
-            moveTo(topInset, topY + topR)
-            quadraticBezierTo(topInset, topY, topInset + topR, topY)
-            lineTo(w - topInset - topR, topY)
-            quadraticBezierTo(w - topInset, topY, w - topInset, topY + topR)
-            // Right side down into deep bottom curve
-            lineTo(w - bottomInset, bottomY - bottomR)
-            quadraticBezierTo(w - bottomInset, bottomY, w / 2f, bottomY)
-            quadraticBezierTo(bottomInset, bottomY, bottomInset, bottomY - bottomR)
-            // Left side up
-            lineTo(topInset, topY + topR)
+            moveTo(topPad, topY + rimH)
+            quadraticBezierTo(topPad, topY, topPad + rimH, topY)
+            lineTo(w - topPad - rimH, topY)
+            quadraticBezierTo(w - topPad, topY, w - topPad, topY + rimH)
+            lineTo(w - botPad, botY - botPad * 0.55f)
+            quadraticBezierTo(w - botPad, botY, w / 2f, botY)
+            quadraticBezierTo(botPad, botY, botPad, botY - botPad * 0.55f)
+            lineTo(topPad, topY + rimH)
             close()
         }
 
-        drawPath(path = glassPath, color = empty)
+        // Glass body — cool dark gradient
+        drawPath(
+            path = glassPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF2A2F3A),
+                    Color(0xFF1A1E28),
+                    Color(0xFF141820),
+                ),
+                startY = topY,
+                endY = botY,
+            ),
+        )
 
+        // Side darkening for cylindrical depth
+        clipPath(glassPath) {
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Black.copy(alpha = 0.28f),
+                        0.18f to Color.Transparent,
+                        0.82f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.28f),
+                    ),
+                ),
+            )
+        }
+
+        // Water
         if (fill > 0.001f) {
-            val waterTop = bottomY - (bottomY - topY) * fill
+            val waterTop = botY - (botY - topY - rimH) * fill
+            val surfRy = w * 0.055f
+            val t = ((waterTop - topY) / (botY - topY)).coerceIn(0f, 1f)
+            val leftAtTop = topPad + (botPad - topPad) * t
+            val rightAtTop = w - leftAtTop
+
             clipPath(glassPath) {
                 drawRect(
-                    color = water,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            water.copy(alpha = 0.85f),
+                            water,
+                            Color(0xFF2B7FD4),
+                        ),
+                        startY = waterTop,
+                        endY = botY,
+                    ),
                     topLeft = Offset(0f, waterTop),
-                    size = Size(w, bottomY - waterTop + 1f),
+                    size = Size(w, botY - waterTop + 2f),
+                )
+                // Elliptical water surface
+                drawOval(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.35f),
+                            water.copy(alpha = 0.9f),
+                        ),
+                    ),
+                    topLeft = Offset(leftAtTop, waterTop - surfRy),
+                    size = Size(rightAtTop - leftAtTop, surfRy * 2f),
                 )
             }
         }
+
+        // Specular highlight
+        clipPath(glassPath) {
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    colorStops = arrayOf(
+                        0.08f to Color.Transparent,
+                        0.16f to Color.White.copy(alpha = 0.18f),
+                        0.22f to Color.White.copy(alpha = 0.07f),
+                        0.30f to Color.Transparent,
+                    ),
+                ),
+            )
+        }
+
+        // Top rim
+        drawOval(
+            color = Color.White.copy(alpha = 0.10f),
+            topLeft = Offset(topPad, topY),
+            size = Size(w - topPad * 2f, rimH * 1.1f),
+        )
+        drawOval(
+            color = Color.White.copy(alpha = 0.06f),
+            topLeft = Offset(topPad + 2f, topY + rimH * 0.35f),
+            size = Size(w - topPad * 2f - 4f, rimH * 0.7f),
+            style = Stroke(width = 1.5f),
+        )
     }
 }
 
 /**
- * Telegram-style amount slider:
- *  - thick fully-rounded track
- *  - filled pill grows from the left
- *  - white knob sits *inside* the track
- *  - bubble follows the knob
+ * Telegram-style amount slider.
  *
- * Visual fraction tracks the finger continuously (smooth). Displayed /
- * committed value snaps to [stepMl] so adds stay on clean 50 мл steps.
+ * Geometry:
+ *  - thick fully-rounded track
+ *  - filled capsule ends at the RIGHT EDGE of the knob (dot never sticks out)
+ *  - speech-bubble value with downward tail
+ *  - fraction tracks finger continuously; committed мл snaps to [stepMl]
+ *  - displayed number animates smoothly between steps
  */
 @Composable
 private fun WaterAmountSlider(
@@ -300,60 +377,88 @@ private fun WaterAmountSlider(
     val density = LocalDensity.current
     var trackWidthPx by remember { mutableFloatStateOf(0f) }
 
-    // Continuous visual position (0..1) — follows the finger pixel-perfect.
     var fraction by remember {
         mutableFloatStateOf(
             ((valueMl - minMl).toFloat() / (maxMl - minMl).toFloat()).coerceIn(0f, 1f),
         )
     }
 
-    // When parent resets value (after add), glide the knob back.
+    // Smooth displayed number
+    val displayAnim = remember { Animatable(valueMl.toFloat()) }
+    LaunchedEffect(valueMl) {
+        displayAnim.animateTo(valueMl.toFloat(), animationSpec = tween(durationMillis = 120))
+    }
+    val displayMl = displayAnim.value.roundToInt()
+
+    // Parent reset after add
     LaunchedEffect(valueMl) {
         val expected = ((valueMl - minMl).toFloat() / (maxMl - minMl).toFloat()).coerceIn(0f, 1f)
-        if (kotlin.math.abs(expected - fraction) > 0.002f) {
+        if (kotlin.math.abs(expected - fraction) > 0.02f) {
             fraction = expected
         }
     }
 
     fun snapMl(raw: Float): Int {
-        val stepped = ((raw - minMl) / stepMl).roundToInt() * stepMl + minMl
+        val stepped = ((raw - minMl) / stepMl.toFloat()).roundToInt() * stepMl + minMl
         return stepped.coerceIn(minMl, maxMl)
     }
 
     fun applyFraction(f: Float) {
         val clamped = f.coerceIn(0f, 1f)
         fraction = clamped
-        val raw = minMl + clamped * (maxMl - minMl)
-        onValueChange(snapMl(raw))
+        onValueChange(snapMl(minMl + clamped * (maxMl - minMl)))
     }
 
     val trackH = 28.dp
-    val knobSize = 22.dp
-    // Horizontal inset so the knob stays fully inside the rounded track ends.
-    val knobInsetPx = with(density) { ((trackH - knobSize) / 2f).toPx() }
+    val knobSize = 20.dp
+    val endRpx = with(density) { (trackH / 2).toPx() }
+    val knobRpx = with(density) { (knobSize / 2).toPx() }
 
     Column(modifier.fillMaxWidth()) {
-        // Value bubble — speech-bubble style, sits above the knob
-        Box(Modifier.fillMaxWidth().height(40.dp)) {
+        // Speech bubble with tail
+        Box(Modifier.fillMaxWidth().height(44.dp)) {
             if (trackWidthPx > 0f) {
-                val travel = (trackWidthPx - knobInsetPx * 2f).coerceAtLeast(1f)
-                val knobCenterX = with(density) {
-                    (knobInsetPx + fraction * travel).toDp()
+                val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
+                val knobCenterPx = endRpx + fraction * travel
+                val bubbleW = with(density) { 72.dp.toPx() }
+                val bubbleH = with(density) { 30.dp.toPx() }
+                val tailH = with(density) { 7.dp.toPx() }
+                val bubbleLeft = (knobCenterPx - bubbleW / 2f)
+                    .coerceIn(0f, (trackWidthPx - bubbleW).coerceAtLeast(0f))
+
+                Canvas(Modifier.fillMaxWidth().height(44.dp)) {
+                    val r = 14.dp.toPx()
+                    val path = Path().apply {
+                        addRoundRect(
+                            RoundRect(
+                                left = bubbleLeft,
+                                top = 0f,
+                                right = bubbleLeft + bubbleW,
+                                bottom = bubbleH,
+                                cornerRadius = CornerRadius(r, r),
+                            ),
+                        )
+                        val tipX = knobCenterPx.coerceIn(bubbleLeft + r, bubbleLeft + bubbleW - r)
+                        val base = 6.dp.toPx()
+                        moveTo(tipX - base, bubbleH - 0.5f)
+                        lineTo(tipX, bubbleH + tailH)
+                        lineTo(tipX + base, bubbleH - 0.5f)
+                        close()
+                    }
+                    drawPath(path, color = LetifyColors.Water)
                 }
-                // Centre the bubble over the knob, clamp to track bounds.
-                val bubbleW = 64.dp
-                val maxX = with(density) { trackWidthPx.toDp() }
-                val bubbleX = (knobCenterX - bubbleW / 2)
-                    .coerceIn(0.dp, (maxX - bubbleW).coerceAtLeast(0.dp))
+
                 Box(
                     Modifier
-                        .offset { IntOffset(bubbleX.roundToPx(), 0) }
-                        .background(LetifyColors.Water, RoundedCornerShape(14.dp))
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                        .offset {
+                            IntOffset(bubbleLeft.roundToInt(), with(density) { 4.dp.roundToPx() })
+                        }
+                        .width(with(density) { bubbleW.toDp() })
+                        .height(with(density) { (bubbleH - 4.dp.toPx()).toDp() }),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "$valueMl мл",
+                        "$displayMl мл",
                         color = Color.White,
                         style = Letify.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
@@ -372,50 +477,51 @@ private fun WaterAmountSlider(
                     detectHorizontalDragGestures(
                         onDragStart = { offset ->
                             if (trackWidthPx > 0f) {
-                                val travel = (trackWidthPx - knobInsetPx * 2f).coerceAtLeast(1f)
-                                applyFraction((offset.x - knobInsetPx) / travel)
+                                val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
+                                applyFraction((offset.x - endRpx) / travel)
                             }
                         },
                         onHorizontalDrag = { change, _ ->
                             change.consume()
                             if (trackWidthPx > 0f) {
-                                val travel = (trackWidthPx - knobInsetPx * 2f).coerceAtLeast(1f)
-                                applyFraction((change.position.x - knobInsetPx) / travel)
+                                val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
+                                applyFraction((change.position.x - endRpx) / travel)
                             }
                         },
                     )
                 },
             contentAlignment = Alignment.CenterStart,
         ) {
-            // Full track — thick rounded pill (Telegram style)
+            // Track
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(trackH)
-                    .background(
-                        Letify.colors.container,
-                        RoundedCornerShape(999.dp),
-                    ),
+                    .background(Letify.colors.container, RoundedCornerShape(999.dp)),
             )
-            // Filled portion — same height, rounded, grows from the left.
-            // Minimum width keeps the left cap + knob visible at the low end.
-            val fillFraction = fraction.coerceIn(0f, 1f)
-            val minFillFrac = if (trackWidthPx > 0f) {
-                (knobInsetPx * 2f + with(density) { knobSize.toPx() }) / trackWidthPx
-            } else 0.08f
-            Box(
-                Modifier
-                    .fillMaxWidth(fillFraction.coerceAtLeast(minFillFrac * 0.5f).coerceIn(0.02f, 1f))
-                    .height(trackH)
-                    .background(LetifyColors.Water, RoundedCornerShape(999.dp)),
-            )
-            // White knob sitting inside the track
+
+            // Fill ends at the RIGHT EDGE of the knob
+            val fillWidthPx = if (trackWidthPx > 0f) {
+                val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
+                val knobCenter = endRpx + fraction * travel
+                (knobCenter + knobRpx).coerceIn(endRpx * 2f, trackWidthPx)
+            } else 0f
+            if (fillWidthPx > 0f) {
+                Box(
+                    Modifier
+                        .width(with(density) { fillWidthPx.toDp() })
+                        .height(trackH)
+                        .background(LetifyColors.Water, RoundedCornerShape(999.dp)),
+                )
+            }
+
+            // Knob
             Box(
                 Modifier
                     .offset {
-                        val travel = (trackWidthPx - knobInsetPx * 2f).coerceAtLeast(1f)
-                        val x = knobInsetPx + fraction * travel - with(density) { (knobSize / 2).toPx() }
-                        IntOffset(x.roundToInt(), 0)
+                        val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
+                        val knobCenter = endRpx + fraction * travel
+                        IntOffset((knobCenter - knobRpx).roundToInt(), 0)
                     }
                     .size(knobSize)
                     .background(Color.White, CircleShape),

@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 159
-        versionName = "r159-slider-glass-reset"
+        versionCode = 160
+        versionName = "r160-glass3d-slider-fix"
         vectorDrawables { useSupportLibrary = true }
     }
 
