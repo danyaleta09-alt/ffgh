@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
@@ -17,38 +16,35 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.letify.app.ui.components.NoFeedbackButton
 import com.letify.app.ui.components.SettingsHeader
-import com.letify.app.ui.components.noFeedbackClick
-import com.letify.app.ui.components.screenHPad
 import com.letify.app.ui.icons.SolarIcon
 import com.letify.app.ui.state.LocalAppState
 import com.letify.app.ui.state.MediaItem
 import com.letify.app.ui.theme.Letify
 
 /**
- * Pinterest-style media gallery. Two-column masonry of photos / videos
- * the user captured from the in-app camera. FAB (+) opens the camera.
+ * Pinterest-style media gallery — LazyVerticalStaggeredGrid for smooth scroll.
+ * FAB opens the in-app camera.
  */
 @Composable
 fun MediaScreen(
@@ -59,15 +55,23 @@ fun MediaScreen(
     val context = LocalContext.current
     LaunchedEffect(Unit) { state.reloadMedia(context.filesDir) }
     val items = state.mediaItems
-    val scroll = rememberScrollState()
+
+    // Stable aspect ratios so cells don't jump while Coil loads.
+    val ratios = remember(items.size) {
+        // Cycle a few pleasing ratios for visual variety when unknown.
+        val pool = floatArrayOf(0.75f, 1f, 0.8f, 0.66f, 1.15f)
+        items.mapIndexed { i, item ->
+            if (item.aspectRatio > 0.2f) item.aspectRatio
+            else pool[i % pool.size]
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Letify.colors.bg)) {
         Column(
             Modifier
                 .fillMaxSize()
-                .verticalScroll(scroll)
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 6.dp, bottom = 100.dp),
+                .padding(top = 6.dp),
         ) {
             SettingsHeader(title = "Медиа", onBack = onBack)
 
@@ -75,7 +79,7 @@ fun MediaScreen(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(280.dp)
+                        .weight(1f)
                         .padding(horizontal = 24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -109,37 +113,32 @@ fun MediaScreen(
                     }
                 }
             } else {
-                // Two-column masonry (Pinterest-style), alternating into
-                // the shorter column by aspect ratio weight.
-                val left = mutableListOf<MediaItem>()
-                val right = mutableListOf<MediaItem>()
-                var leftH = 0f
-                var rightH = 0f
-                items.forEach { item ->
-                    val h = 1f / item.aspectRatio.coerceAtLeast(0.3f)
-                    if (leftH <= rightH) {
-                        left += item
-                        leftH += h
-                    } else {
-                        right += item
-                        rightH += h
-                    }
-                }
-
-                Row(
-                    Modifier
+                LazyVerticalStaggeredGrid(
+                    columns = StaggeredGridCells.Fixed(2),
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .screenHPad()
-                        .padding(top = 4.dp),
+                        .weight(1f),
+                    contentPadding = PaddingValues(
+                        start = 12.dp,
+                        end = 12.dp,
+                        top = 4.dp,
+                        bottom = 110.dp,
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalItemSpacing = 8.dp,
                 ) {
-                    MasonryColumn(Modifier.weight(1f), left)
-                    MasonryColumn(Modifier.weight(1f), right)
+                    items(
+                        items = items,
+                        key = { it.id },
+                    ) { item ->
+                        val ratio = item.aspectRatio.coerceIn(0.45f, 1.6f)
+                        MediaCard(item = item, aspectRatio = ratio)
+                    }
                 }
             }
         }
 
-        // FAB — bottom-right, above the home indicator area
+        // FAB
         NoFeedbackButton(
             onClick = onOpenCamera,
             modifier = Modifier
@@ -164,27 +163,21 @@ fun MediaScreen(
 }
 
 @Composable
-private fun MasonryColumn(modifier: Modifier, items: List<MediaItem>) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items.forEach { item ->
-            MediaCard(item)
-        }
-    }
-}
-
-@Composable
-private fun MediaCard(item: MediaItem) {
-    var pressed by remember { mutableStateOf(false) }
+private fun MediaCard(item: MediaItem, aspectRatio: Float) {
+    val context = LocalContext.current
     Box(
         Modifier
             .fillMaxWidth()
-            .aspectRatio(item.aspectRatio)
+            .aspectRatio(aspectRatio)
             .clip(RoundedCornerShape(16.dp))
-            .background(Letify.colors.container)
-            .noFeedbackClick(onClick = { /* future: open detail */ }),
+            .background(Letify.colors.container),
     ) {
         AsyncImage(
-            model = Uri.parse(item.uri),
+            model = ImageRequest.Builder(context)
+                .data(Uri.parse(item.uri))
+                .crossfade(180)
+                .size(600) // decode downscaled — kills scroll jank
+                .build(),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
