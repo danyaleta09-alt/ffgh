@@ -40,6 +40,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -58,7 +59,7 @@ import com.letify.app.ui.theme.Letify
 @Composable
 fun MediaScreen(
     onBack: () -> Unit,
-    onOpenCamera: (Rect) -> Unit,
+    onOpenCamera: (Rect, Dp) -> Unit,
 ) {
     val state = LocalAppState.current
     val context = LocalContext.current
@@ -179,7 +180,7 @@ fun MediaScreen(
         }
 
         NoFeedbackButton(
-            onClick = { onOpenCamera(fabBounds) },
+            onClick = { onOpenCamera(fabBounds, 28.dp) },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 20.dp, bottom = 28.dp)
