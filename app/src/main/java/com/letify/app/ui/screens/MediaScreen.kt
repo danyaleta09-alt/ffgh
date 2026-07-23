@@ -32,12 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,16 +55,13 @@ import com.letify.app.ui.theme.Letify
 @Composable
 fun MediaScreen(
     onBack: () -> Unit,
-    onOpenCamera: (Rect) -> Unit,
+    onOpenCamera: () -> Unit,
 ) {
     val state = LocalAppState.current
     val context = LocalContext.current
     LaunchedEffect(Unit) { state.reloadMedia(context.filesDir) }
     val items = state.mediaItems
     val bg = Letify.colors.bg
-    // Bounds of the FAB in root/window coordinates, refreshed on every
-    // layout pass — the camera expand-transition grows from exactly here.
-    var fabBounds by remember { mutableStateOf(Rect.Zero) }
 
     Box(Modifier.fillMaxSize().background(bg)) {
         if (items.isEmpty()) {
@@ -179,13 +173,12 @@ fun MediaScreen(
         }
 
         NoFeedbackButton(
-            onClick = { onOpenCamera(fabBounds) },
+            onClick = onOpenCamera,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 20.dp, bottom = 28.dp)
                 .size(56.dp)
-                .zIndex(3f)
-                .onGloballyPositioned { coords -> fabBounds = coords.boundsInRoot() },
+                .zIndex(3f),
         ) {
             Box(
                 Modifier

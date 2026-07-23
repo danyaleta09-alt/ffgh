@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 172
-        versionName = "r172-camera-expand-fix"
+        versionCode = 173
+        versionName = "r173-camera-slide-up"
         vectorDrawables { useSupportLibrary = true }
     }
 

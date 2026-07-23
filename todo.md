@@ -1,14 +1,10 @@
-## r172-camera-expand-fix (versionCode 172)
-- **Анимация открытия камеры (Моменты FAB + Профиль «Камера»):** белая вспышка, потеря скруглений, обрезания, лаги.
-  ПРИЧИНА 1: `graphicsLayer` использовал *неравномерный* scaleX/scaleY (подгонка под точный rect кнопки). RoundedCornerShape после non-uniform scale превращался в искажённый эллипс → «скругления теряются / обрезания».
-  ПРИЧИНА 2: фон оверлея был `Letify.colors.text` (#F4F4F5) — почти белый на тёмном UI → яркая вспышка при росте.
-  ПРИЧИНА 3: TransformOrigin(0,0) + lerp left/top давал нестабильный клип на промежуточных кадрах.
-  ФИКС:
-  - Uniform scale (одинаковый scaleX = scaleY) от диаметра кнопки → full screen. Центр круга едет по прямой button-centre → screen-centre, TransformOrigin(0.5, 0.5).
-  - Фон → `Color.Black` (как у CameraCaptureScreen) — вспышки больше нет.
-  - Corner radius в unscaled-пространстве: после ×scale даёт идеальный круг (startDiam/2) при p=0 и 0 при p=1.
-  - Alpha контента стартует чуть раньше (0.18 → 0.63) чтобы превью уже читалось во время расширения.
-- versionCode 171→172, versionName r172-camera-expand-fix.
+## r173-camera-slide-up (versionCode 173)
+- **Камера:** полностью убрал container-transform / expand-morph (белая вспышка, потеря скруглений, обрезания, лаги).
+  Теперь открывается **простым плавным слайдом снизу** (translationY 1→0) + лёгкий scrim.
+  Easing: CubicBezier(0.22, 1, 0.36, 1), in 380ms / out 300ms.
+  Больше никаких bounds/Rect, onGloballyPositioned, CameraExpandOverlay.
+  CameraCaptureScreen остался как был (OPEN_DELAY 380ms совпадает с анимацией).
+- versionCode 171→173, versionName r173-camera-slide-up.
 
 ## r159-slider-glass-reset (versionCode 159)
 - Слайдер воды: дизайн как у Telegram «звёздная реакция» — толстая скруглённая полоса, заливка-капсула, белый knob внутри трека. Ход плавный (fraction за пальцем), значение с шагом 50 мл.

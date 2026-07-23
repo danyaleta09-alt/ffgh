@@ -6,7 +6,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -38,7 +37,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.letify.app.ui.components.CameraExpandOverlay
 import com.letify.app.ui.components.Navbar
 import com.letify.app.ui.components.NoFeedbackButton
 import com.letify.app.ui.components.OverlayHost
@@ -84,9 +82,10 @@ import kotlinx.coroutines.launch
 private val TabPushEasing = CubicBezierEasing(0.32f, 0.72f, 0.0f, 1.0f)
 private const val TabPushMs = 320
 
-// Gentle ease-out — the FAB/button expansion should feel like it accelerates
-// away quickly then settles smoothly into the full screen, not a linear grow.
-private val CameraExpandEasing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
+// Smooth decelerate for the camera slide-up from bottom.
+private val CameraSlideEasing = CubicBezierEasing(0.22f, 1.0f, 0.36f, 1.0f)
+private const val CameraSlideInMs = 380
+private const val CameraSlideOutMs = 300
 
 sealed interface AddOverlay {
     // editId != null → open the create screen pre-filled to EDIT that item
@@ -164,27 +163,28 @@ fun LetifyApp() {
     var overlayStack by remember { mutableStateOf<List<AddOverlay>>(emptyList()) }
     var lastAction by remember { mutableStateOf("init") }
 
-    // Camera "container transform": the FAB (or a quick-action button) morphs
-    // into the full-screen camera instead of the camera sliding in as a
-    // normal overlay. `cameraOrigin` is the button's bounds (captured by the
-    // caller via boundsInRoot()) that the shape grows from / shrinks back
-    // into; `cameraProgress` drives that growth (0 = button, 1 = full screen).
-    // `cameraVisible` keeps the CameraCaptureScreen composed for the whole
-    // close animation so it doesn't just vanish before the shrink finishes.
+    // Camera opens as a simple full-screen slide-up from the bottom.
+    // No container-transform / expand morph — just a clean vertical slide
+    // + light scrim. Progress 0 = fully off-screen below, 1 = settled.
+    // `cameraVisible` keeps the screen composed through the close animation.
     val cameraScope = rememberCoroutineScope()
-    var cameraOrigin by remember { mutableStateOf<Rect?>(null) }
     var cameraVisible by remember { mutableStateOf(false) }
     val cameraProgress = remember { Animatable(0f) }
-    val openCamera: (Rect?) -> Unit = { rect ->
-        cameraOrigin = rect
+    val openCamera: () -> Unit = {
         cameraVisible = true
         cameraScope.launch {
-            cameraProgress.animateTo(1f, animationSpec = tween(420, easing = CameraExpandEasing))
+            cameraProgress.animateTo(
+                1f,
+                animationSpec = tween(CameraSlideInMs, easing = CameraSlideEasing),
+            )
         }
     }
     val closeCamera: () -> Unit = {
         cameraScope.launch {
-            cameraProgress.animateTo(0f, animationSpec = tween(360, easing = CameraExpandEasing))
+            cameraProgress.animateTo(
+                0f,
+                animationSpec = tween(CameraSlideOutMs, easing = CameraSlideEasing),
+            )
             cameraVisible = false
         }
     }
@@ -320,7 +320,7 @@ fun LetifyApp() {
                                 onOther = { push(AddOverlay.Other) },
                                 onProgressDetail = { push(AddOverlay.ProgressGoals) },
                                 onMedia = { push(AddOverlay.Media) },
-                                onQuickCamera = { rect -> openCamera(rect) },
+                                onQuickCamera = { openCamera() },
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
                             )
@@ -439,7 +439,7 @@ fun LetifyApp() {
                                 // Progress-Goals screen mounted underneath.
                                 onPushWeight = { rootSheet = AddOverlay.Weight },
                                 onPushSleep = { rootSheet = AddOverlay.Sleep },
-                                onOpenCameraExpand = { rect -> openCamera(rect) },
+                                onOpenCameraExpand = { openCamera() },
                             )
                         }
                     }
@@ -456,20 +456,34 @@ fun LetifyApp() {
             else -> {}
         }
 
-        // Camera "container transform" — sits above everything (overlays,
-        // navbar, root sheets) while the FAB/button is mid-morph, and stays
-        // mounted through the whole close animation so the shrink-back has
-        // something to animate.
-        if (cameraVisible || cameraProgress.value > 0f) {
-            CameraExpandOverlay(
-                progress = { cameraProgress.value },
-                origin = cameraOrigin,
-            ) {
-                CameraCaptureScreen(
-                    onBack = closeCamera,
-                    // Stay on camera; a corner thumbnail confirms the shot.
-                    onCaptured = {},
+        // Camera full-screen slide-up from bottom. Sits above overlays /
+        // navbar / sheets. Composed while visible or while the exit slide
+        // is still running so the close animation is smooth.
+        if (cameraVisible || cameraProgress.value > 0.001f) {
+            Box(Modifier.fillMaxSize().zIndex(50f)) {
+                // Soft scrim that fades with the slide.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = cameraProgress.value.coerceIn(0f, 1f) * 0.45f
+                        }
+                        .background(Color.Black),
                 )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val p = cameraProgress.value.coerceIn(0f, 1f)
+                            translationY = (1f - p) * size.height
+                        },
+                ) {
+                    CameraCaptureScreen(
+                        onBack = closeCamera,
+                        // Stay on camera; a corner thumbnail confirms the shot.
+                        onCaptured = {},
+                    )
+                }
             }
         }
 
@@ -495,7 +509,7 @@ private fun OverlayContent(
     onPushWeight: () -> Unit = {},
     onPushSleep: () -> Unit = {},
     onPushBindings: () -> Unit = {},
-    onOpenCameraExpand: (Rect) -> Unit = {},
+    onOpenCameraExpand: () -> Unit = {},
 ) {
     when (current) {
         is AddOverlay.Habit -> AddHabitScreen(onBack = animatedBack, editId = current.editId)

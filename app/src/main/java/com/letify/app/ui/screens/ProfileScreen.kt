@@ -30,10 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -72,7 +69,7 @@ fun ProfileScreen(
     onOther: () -> Unit = {},
     onProgressDetail: () -> Unit = {},
     onMedia: () -> Unit = {},
-    onQuickCamera: (Rect) -> Unit = {},
+    onQuickCamera: () -> Unit = {},
     onQuickScan: () -> Unit = {},
     onQuickWeight: () -> Unit = {},
 ) {
@@ -81,7 +78,6 @@ fun ProfileScreen(
     val percent = (breakdown.overall * 100f).toInt()
     // Bounds of the "Камера" quick-action tile in root coordinates — the
     // camera container-transform grows from exactly this rect.
-    var cameraTileBounds by remember { mutableStateOf(Rect.Zero) }
 
     ScreenScaffold(topPadding = 0.dp) {
         // Pencil edit button anchored top-right with no surrounding plate.
@@ -215,12 +211,10 @@ fun ProfileScreen(
                 onClick = onQuickWeight,
             )
             QuickAction(
-                modifier = Modifier
-                    .weight(1f)
-                    .onGloballyPositioned { coords -> cameraTileBounds = coords.boundsInRoot() },
+                modifier = Modifier.weight(1f),
                 icon = "camera-bold-duotone",
                 label = "Камера",
-                onClick = { onQuickCamera(cameraTileBounds) },
+                onClick = onQuickCamera,
             )
         }
 
