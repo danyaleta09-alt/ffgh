@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 168
-        versionName = "r168-camera-compile-fix"
+        versionCode = 169
+        versionName = "r169-setSurfaceProvider"
         vectorDrawables { useSupportLibrary = true }
     }
 

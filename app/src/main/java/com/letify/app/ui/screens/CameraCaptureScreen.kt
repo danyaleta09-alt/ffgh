@@ -223,7 +223,7 @@ fun CameraCaptureScreen(
                         providerFuture.addListener({
                             val provider = providerFuture.get()
                             val preview = Preview.Builder().build().also { p ->
-                                p.surfaceProvider = previewView.surfaceProvider
+                                p.setSurfaceProvider(previewView.surfaceProvider)
                             }
                             try {
                                 provider.unbindAll()
