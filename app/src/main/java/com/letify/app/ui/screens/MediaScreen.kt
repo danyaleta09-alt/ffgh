@@ -25,12 +25,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,19 +52,22 @@ import com.letify.app.ui.state.MediaItem
 import com.letify.app.ui.theme.Letify
 
 /**
- * Pinterest-style media gallery.
- * Header floats with a gradient fade — grid scrolls underneath.
+ * Pinterest-style "Моменты" gallery.
+ * Header floats with a soft gradient fade — grid scrolls underneath.
  */
 @Composable
 fun MediaScreen(
     onBack: () -> Unit,
-    onOpenCamera: () -> Unit,
+    onOpenCamera: (Rect) -> Unit,
 ) {
     val state = LocalAppState.current
     val context = LocalContext.current
     LaunchedEffect(Unit) { state.reloadMedia(context.filesDir) }
     val items = state.mediaItems
     val bg = Letify.colors.bg
+    // Bounds of the FAB in root/window coordinates, refreshed on every
+    // layout pass — the camera expand-transition grows from exactly here.
+    var fabBounds by remember { mutableStateOf(Rect.Zero) }
 
     Box(Modifier.fillMaxSize().background(bg)) {
         if (items.isEmpty()) {
@@ -76,7 +86,7 @@ fun MediaScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         SolarIcon(
-                            name = "widget-bold-duotone",
+                            name = "gallery-bold-duotone",
                             tint = Letify.colors.muted,
                             size = 28.dp,
                         )
@@ -117,7 +127,11 @@ fun MediaScreen(
             }
         }
 
-        // Floating header — content scrolls under the gradient
+        // Floating header — content scrolls under the gradient. Many stops
+        // following a quadratic ease-out (alpha ∝ (1-t)²) so the fade reads
+        // as one continuous soft haze with no visible seam, never darkens
+        // past a light scrim (peak alpha 0.45, all the way down to fully
+        // transparent by the bottom of the header) — not a hard curtain.
         Box(
             Modifier
                 .fillMaxWidth()
@@ -125,9 +139,15 @@ fun MediaScreen(
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to bg,
-                            0.55f to bg.copy(alpha = 0.92f),
-                            1.0f to bg.copy(alpha = 0f),
+                            0.000f to bg.copy(alpha = 0.45f),
+                            0.125f to bg.copy(alpha = 0.344f),
+                            0.250f to bg.copy(alpha = 0.253f),
+                            0.375f to bg.copy(alpha = 0.176f),
+                            0.500f to bg.copy(alpha = 0.113f),
+                            0.625f to bg.copy(alpha = 0.063f),
+                            0.750f to bg.copy(alpha = 0.028f),
+                            0.875f to bg.copy(alpha = 0.007f),
+                            1.000f to bg.copy(alpha = 0f),
                         ),
                     ),
                 )
@@ -150,7 +170,7 @@ fun MediaScreen(
                     }
                 }
                 Text(
-                    "Медиа",
+                    "Моменты",
                     color = Letify.colors.text,
                     style = Letify.typography.headlineMedium,
                     modifier = Modifier.weight(1f),
@@ -159,12 +179,13 @@ fun MediaScreen(
         }
 
         NoFeedbackButton(
-            onClick = onOpenCamera,
+            onClick = { onOpenCamera(fabBounds) },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 20.dp, bottom = 28.dp)
                 .size(56.dp)
-                .zIndex(3f),
+                .zIndex(3f)
+                .onGloballyPositioned { coords -> fabBounds = coords.boundsInRoot() },
         ) {
             Box(
                 Modifier

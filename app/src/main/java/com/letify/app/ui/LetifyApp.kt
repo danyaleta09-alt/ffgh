@@ -4,7 +4,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -36,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.letify.app.ui.components.CameraExpandOverlay
 import com.letify.app.ui.components.Navbar
 import com.letify.app.ui.components.NoFeedbackButton
 import com.letify.app.ui.components.OverlayHost
@@ -69,6 +72,7 @@ import com.letify.app.ui.state.TransitionStyle
 import com.letify.app.ui.theme.Letify
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
+import kotlinx.coroutines.launch
 
 /**
  * Identifies which secondary screen is currently active on top of the tabs.
@@ -79,6 +83,10 @@ import dev.chrisbanes.haze.haze
 // so the bottom-tab swap and the indicator glide on one consistent motion.
 private val TabPushEasing = CubicBezierEasing(0.32f, 0.72f, 0.0f, 1.0f)
 private const val TabPushMs = 320
+
+// Gentle ease-out — the FAB/button expansion should feel like it accelerates
+// away quickly then settles smoothly into the full screen, not a linear grow.
+private val CameraExpandEasing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
 
 sealed interface AddOverlay {
     // editId != null → open the create screen pre-filled to EDIT that item
@@ -99,7 +107,6 @@ sealed interface AddOverlay {
     data object ProgressGoals : AddOverlay
     data object WaterHistory : AddOverlay
     data object Media : AddOverlay
-    data object CameraCapture : AddOverlay
 }
 
 /**
@@ -156,6 +163,31 @@ fun LetifyApp() {
     // was already on screen as an underlay — no entry animation).
     var overlayStack by remember { mutableStateOf<List<AddOverlay>>(emptyList()) }
     var lastAction by remember { mutableStateOf("init") }
+
+    // Camera "container transform": the FAB (or a quick-action button) morphs
+    // into the full-screen camera instead of the camera sliding in as a
+    // normal overlay. `cameraOrigin` is the button's bounds (captured by the
+    // caller via boundsInRoot()) that the shape grows from / shrinks back
+    // into; `cameraProgress` drives that growth (0 = button, 1 = full screen).
+    // `cameraVisible` keeps the CameraCaptureScreen composed for the whole
+    // close animation so it doesn't just vanish before the shrink finishes.
+    val cameraScope = rememberCoroutineScope()
+    var cameraOrigin by remember { mutableStateOf<Rect?>(null) }
+    var cameraVisible by remember { mutableStateOf(false) }
+    val cameraProgress = remember { Animatable(0f) }
+    val openCamera: (Rect?) -> Unit = { rect ->
+        cameraOrigin = rect
+        cameraVisible = true
+        cameraScope.launch {
+            cameraProgress.animateTo(1f, animationSpec = tween(420, easing = CameraExpandEasing))
+        }
+    }
+    val closeCamera: () -> Unit = {
+        cameraScope.launch {
+            cameraProgress.animateTo(0f, animationSpec = tween(360, easing = CameraExpandEasing))
+            cameraVisible = false
+        }
+    }
     val overlay: AddOverlay? = overlayStack.lastOrNull()
     val underlay: AddOverlay? = if (overlayStack.size >= 2) overlayStack[overlayStack.size - 2] else null
     val push: (AddOverlay) -> Unit = { o -> overlayStack = overlayStack + o; lastAction = "push" }
@@ -285,10 +317,10 @@ fun LetifyApp() {
                                 onGoals = { push(AddOverlay.Goals) },
                                 onAppearance = { push(AddOverlay.Appearance) },
                                 onNotifications = { push(AddOverlay.Notifications) },
-                                onTiwi = { push(AddOverlay.Tiwi) },
                                 onOther = { push(AddOverlay.Other) },
                                 onProgressDetail = { push(AddOverlay.ProgressGoals) },
                                 onMedia = { push(AddOverlay.Media) },
+                                onQuickCamera = { rect -> openCamera(rect) },
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
                             )
@@ -407,7 +439,7 @@ fun LetifyApp() {
                                 // Progress-Goals screen mounted underneath.
                                 onPushWeight = { rootSheet = AddOverlay.Weight },
                                 onPushSleep = { rootSheet = AddOverlay.Sleep },
-                                onPushCamera = { push(AddOverlay.CameraCapture) },
+                                onOpenCameraExpand = { rect -> openCamera(rect) },
                             )
                         }
                     }
@@ -422,6 +454,23 @@ fun LetifyApp() {
             AddOverlay.Weight -> AddWeightScreen(onBack = { rootSheet = null })
             AddOverlay.Sleep -> AddSleepScreen(onBack = { rootSheet = null })
             else -> {}
+        }
+
+        // Camera "container transform" — sits above everything (overlays,
+        // navbar, root sheets) while the FAB/button is mid-morph, and stays
+        // mounted through the whole close animation so the shrink-back has
+        // something to animate.
+        if (cameraVisible || cameraProgress.value > 0f) {
+            CameraExpandOverlay(
+                progress = { cameraProgress.value },
+                origin = cameraOrigin,
+            ) {
+                CameraCaptureScreen(
+                    onBack = closeCamera,
+                    // Stay on camera; a corner thumbnail confirms the shot.
+                    onCaptured = {},
+                )
+            }
         }
 
         // Crash reports are written to disk by CrashReporter on uncaught
@@ -446,7 +495,7 @@ private fun OverlayContent(
     onPushWeight: () -> Unit = {},
     onPushSleep: () -> Unit = {},
     onPushBindings: () -> Unit = {},
-    onPushCamera: () -> Unit = {},
+    onOpenCameraExpand: (Rect) -> Unit = {},
 ) {
     when (current) {
         is AddOverlay.Habit -> AddHabitScreen(onBack = animatedBack, editId = current.editId)
@@ -474,12 +523,7 @@ private fun OverlayContent(
         )
         AddOverlay.Media -> MediaScreen(
             onBack = animatedBack,
-            onOpenCamera = onPushCamera,
-        )
-        AddOverlay.CameraCapture -> CameraCaptureScreen(
-            onBack = animatedBack,
-            // Stay on camera; a corner thumbnail confirms the shot.
-            onCaptured = {},
+            onOpenCamera = onOpenCameraExpand,
         )
     }
 }

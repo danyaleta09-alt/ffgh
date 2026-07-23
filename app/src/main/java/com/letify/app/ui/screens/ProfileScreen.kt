@@ -23,12 +23,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -64,16 +69,19 @@ fun ProfileScreen(
     onGoals: () -> Unit = {},
     onAppearance: () -> Unit = {},
     onNotifications: () -> Unit = {},
-    onTiwi: () -> Unit = {},
     onOther: () -> Unit = {},
     onProgressDetail: () -> Unit = {},
     onMedia: () -> Unit = {},
+    onQuickCamera: (Rect) -> Unit = {},
     onQuickScan: () -> Unit = {},
     onQuickWeight: () -> Unit = {},
 ) {
     val state = LocalAppState.current
     val breakdown = calculateGoalProgress(state)
     val percent = (breakdown.overall * 100f).toInt()
+    // Bounds of the "Камера" quick-action tile in root coordinates — the
+    // camera container-transform grows from exactly this rect.
+    var cameraTileBounds by remember { mutableStateOf(Rect.Zero) }
 
     ScreenScaffold(topPadding = 0.dp) {
         // Pencil edit button anchored top-right with no surrounding plate.
@@ -207,10 +215,12 @@ fun ProfileScreen(
                 onClick = onQuickWeight,
             )
             QuickAction(
-                modifier = Modifier.weight(1f),
-                icon = "widget-bold-duotone",
-                label = "Медиа",
-                onClick = onMedia,
+                modifier = Modifier
+                    .weight(1f)
+                    .onGloballyPositioned { coords -> cameraTileBounds = coords.boundsInRoot() },
+                icon = "camera-bold-duotone",
+                label = "Камера",
+                onClick = { onQuickCamera(cameraTileBounds) },
             )
         }
 
@@ -241,10 +251,10 @@ fun ProfileScreen(
             )
             SettingsRowDivider()
             SettingsRow(
-                icon = "smile-circle-bold",
+                icon = "gallery-bold-duotone",
                 iconTile = LetifyColors.TilePink,
-                title = "Letify",
-                onClick = onTiwi,
+                title = "Моменты",
+                onClick = onMedia,
             )
         }
 
