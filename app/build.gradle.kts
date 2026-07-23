@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 161
-        versionName = "r161-glass-theme-slider"
+        versionCode = 162
+        versionName = "r162-glass-slider-stable"
         vectorDrawables { useSupportLibrary = true }
     }
 
