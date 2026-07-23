@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 167
-        versionName = "r167-media-camera"
+        versionCode = 168
+        versionName = "r168-camera-compile-fix"
         vectorDrawables { useSupportLibrary = true }
     }
 

@@ -210,34 +210,35 @@ fun CameraCaptureScreen(
             ) {
                 AndroidView(
                     factory = { ctx ->
-                        PreviewView(ctx).apply {
+                        val previewView = PreviewView(ctx).apply {
                             layoutParams = ViewGroup.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                             )
                             scaleType = PreviewView.ScaleType.FILL_CENTER
                             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                            // Bind camera once when the view is created.
-                            val providerFuture = ProcessCameraProvider.getInstance(ctx)
-                            providerFuture.addListener({
-                                val provider = providerFuture.get()
-                                val preview = Preview.Builder().build().also {
-                                    it.surfaceProvider = surfaceProvider
-                                }
-                                try {
-                                    provider.unbindAll()
-                                    provider.bindToLifecycle(
-                                        lifecycleOwner,
-                                        CameraSelector.DEFAULT_BACK_CAMERA,
-                                        preview,
-                                        imageCapture,
-                                        videoCapture,
-                                    )
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "bind failed", e)
-                                }
-                            }, ContextCompat.getMainExecutor(ctx))
                         }
+                        // Bind camera once when the view is created.
+                        val providerFuture = ProcessCameraProvider.getInstance(ctx)
+                        providerFuture.addListener({
+                            val provider = providerFuture.get()
+                            val preview = Preview.Builder().build().also { p ->
+                                p.surfaceProvider = previewView.surfaceProvider
+                            }
+                            try {
+                                provider.unbindAll()
+                                provider.bindToLifecycle(
+                                    lifecycleOwner,
+                                    CameraSelector.DEFAULT_BACK_CAMERA,
+                                    preview,
+                                    imageCapture,
+                                    videoCapture,
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "bind failed", e)
+                            }
+                        }, ContextCompat.getMainExecutor(ctx))
+                        previewView
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
