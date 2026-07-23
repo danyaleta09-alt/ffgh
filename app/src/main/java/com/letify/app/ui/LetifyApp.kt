@@ -36,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.letify.app.ui.components.CameraExpandOverlay
@@ -174,17 +173,10 @@ fun LetifyApp() {
     // close animation so it doesn't just vanish before the shrink finishes.
     val cameraScope = rememberCoroutineScope()
     var cameraOrigin by remember { mutableStateOf<Rect?>(null) }
-    // The button the camera morphs out of isn't always the same shape — the
-    // Profile quick-action tile is a 22dp-radius rounded rect, the Media FAB
-    // is a full 28dp-radius circle. Passing the wrong radius (or a single
-    // guessed constant, as before) is what made the corners look wrong /
-    // clipped at the start of the open animation.
-    var cameraCornerRadius by remember { mutableStateOf(28.dp) }
     var cameraVisible by remember { mutableStateOf(false) }
     val cameraProgress = remember { Animatable(0f) }
-    val openCamera: (Rect?, Dp) -> Unit = { rect, cornerRadius ->
+    val openCamera: (Rect?) -> Unit = { rect ->
         cameraOrigin = rect
-        cameraCornerRadius = cornerRadius
         cameraVisible = true
         cameraScope.launch {
             cameraProgress.animateTo(1f, animationSpec = tween(420, easing = CameraExpandEasing))
@@ -328,7 +320,7 @@ fun LetifyApp() {
                                 onOther = { push(AddOverlay.Other) },
                                 onProgressDetail = { push(AddOverlay.ProgressGoals) },
                                 onMedia = { push(AddOverlay.Media) },
-                                onQuickCamera = { rect, cornerRadius -> openCamera(rect, cornerRadius) },
+                                onQuickCamera = { rect -> openCamera(rect) },
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
                             )
@@ -447,7 +439,7 @@ fun LetifyApp() {
                                 // Progress-Goals screen mounted underneath.
                                 onPushWeight = { rootSheet = AddOverlay.Weight },
                                 onPushSleep = { rootSheet = AddOverlay.Sleep },
-                                onOpenCameraExpand = { rect, cornerRadius -> openCamera(rect, cornerRadius) },
+                                onOpenCameraExpand = { rect -> openCamera(rect) },
                             )
                         }
                     }
@@ -472,7 +464,6 @@ fun LetifyApp() {
             CameraExpandOverlay(
                 progress = { cameraProgress.value },
                 origin = cameraOrigin,
-                originCornerRadius = cameraCornerRadius,
             ) {
                 CameraCaptureScreen(
                     onBack = closeCamera,
@@ -504,7 +495,7 @@ private fun OverlayContent(
     onPushWeight: () -> Unit = {},
     onPushSleep: () -> Unit = {},
     onPushBindings: () -> Unit = {},
-    onOpenCameraExpand: (Rect, Dp) -> Unit = { _, _ -> },
+    onOpenCameraExpand: (Rect) -> Unit = {},
 ) {
     when (current) {
         is AddOverlay.Habit -> AddHabitScreen(onBack = animatedBack, editId = current.editId)

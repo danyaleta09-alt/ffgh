@@ -40,7 +40,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -73,7 +72,7 @@ fun ProfileScreen(
     onOther: () -> Unit = {},
     onProgressDetail: () -> Unit = {},
     onMedia: () -> Unit = {},
-    onQuickCamera: (Rect, Dp) -> Unit = { _, _ -> },
+    onQuickCamera: (Rect) -> Unit = {},
     onQuickScan: () -> Unit = {},
     onQuickWeight: () -> Unit = {},
 ) {
@@ -221,7 +220,7 @@ fun ProfileScreen(
                     .onGloballyPositioned { coords -> cameraTileBounds = coords.boundsInRoot() },
                 icon = "camera-bold-duotone",
                 label = "Камера",
-                onClick = { onQuickCamera(cameraTileBounds, 22.dp) },
+                onClick = { onQuickCamera(cameraTileBounds) },
             )
         }
 
