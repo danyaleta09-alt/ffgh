@@ -78,7 +78,7 @@ fun WaterHistoryScreen(onBack: () -> Unit) {
     val avg = if (nonZeroTotals.isEmpty()) 0 else nonZeroTotals.sum() / nonZeroTotals.size
     val best = totals.maxByOrNull { it.second }
 
-    var expandedDay by remember { mutableStateOf<String?>(null) }
+    var expandedDay by remember { mutableStateOf<String?>(Dates.todayKey()) }
     val scroll = rememberScrollState()
 
     // Same scaffold as AppearanceScreen / BindingsScreen / NotificationsScreen:
@@ -124,7 +124,13 @@ fun WaterHistoryScreen(onBack: () -> Unit) {
             }
             Box(Modifier.height(14.dp))
             WCard(modifier = Modifier.screenHPad()) {
-                WaterBars(totals = totals, goalMl = state.waterTarget, compact = period == "month")
+                WaterBars(
+                    totals = totals,
+                    goalMl = state.waterTarget,
+                    compact = period == "month",
+                    selectedDateKey = expandedDay ?: totals.lastOrNull()?.first,
+                    onSelectDay = { key -> expandedDay = key },
+                )
             }
 
             Box(Modifier.height(20.dp))
@@ -180,23 +186,42 @@ fun WaterHistoryScreen(onBack: () -> Unit) {
 
 @Composable
 private fun StatTile(modifier: Modifier = Modifier, label: String, value: String) {
+    // Fixed height so all three tiles align regardless of label line-count.
     Box(
         modifier
+            .height(76.dp)
             .background(Letify.colors.container, RoundedCornerShape(16.dp))
-            .padding(horizontal = 12.dp, vertical = 14.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
     ) {
-        Column {
-            Text(value, color = Letify.colors.text, style = Letify.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
+            Text(
+                value,
+                color = Letify.colors.text,
+                style = Letify.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
             Box(Modifier.height(2.dp))
-            Text(label, color = Letify.colors.muted, style = Letify.typography.bodySmall)
+            Text(
+                label,
+                color = Letify.colors.muted,
+                style = Letify.typography.bodySmall,
+                maxLines = 2,
+            )
         }
     }
 }
 
 @Composable
-private fun WaterBars(totals: List<Pair<String, Int>>, goalMl: Int, compact: Boolean) {
+private fun WaterBars(
+    totals: List<Pair<String, Int>>,
+    goalMl: Int,
+    compact: Boolean,
+    selectedDateKey: String?,
+    onSelectDay: (String) -> Unit,
+) {
     val maxMl = (totals.maxOfOrNull { it.second } ?: goalMl).coerceAtLeast(goalMl).coerceAtLeast(1)
-    var selected by remember(totals) { mutableStateOf(totals.lastIndex) }
+    val selected = totals.indexOfFirst { it.first == selectedDateKey }.let { if (it >= 0) it else totals.lastIndex }
 
     Column(Modifier.fillMaxWidth()) {
         if (selected in totals.indices) {
@@ -218,7 +243,7 @@ private fun WaterBars(totals: List<Pair<String, Int>>, goalMl: Int, compact: Boo
                 val fraction = (ml.toFloat() / maxMl).coerceIn(0f, 1f)
                 val metGoal = ml >= goalMl && goalMl > 0
                 val on = i == selected
-                NoFeedbackButton(onClick = { selected = i }, modifier = Modifier.weight(1f)) {
+                NoFeedbackButton(onClick = { onSelectDay(dateKey) }, modifier = Modifier.weight(1f)) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             Modifier
