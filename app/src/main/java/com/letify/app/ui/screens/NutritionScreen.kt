@@ -290,31 +290,18 @@ private fun WaterGlass(
                     topLeft = Offset(left, waterTop),
                     size = Size(right - left, bot - waterTop + 1f),
                 )
-                // Soft curved surface
-                val wave = (right - left) * 0.04f
-                val surface = Path().apply {
-                    moveTo(left, waterTop)
-                    cubicTo(
-                        left + (right - left) * 0.3f, waterTop - wave,
-                        left + (right - left) * 0.7f, waterTop + wave * 0.6f,
-                        right, waterTop,
-                    )
-                    lineTo(right, waterTop + wave * 2f)
-                    lineTo(left, waterTop + wave * 2f)
-                    close()
-                }
-                drawPath(surface, color = Color.White.copy(alpha = 0.22f))
             }
         }
     }
 }
 
 /**
- * Telegram-style amount slider.
- * - soft continuous drag (visual follows finger 1:1)
- * - on release springs to the nearest step
- * - bubble is rounded body + overlapping tail (no seam gap)
- * - number updates instantly, no text animation jank
+ * Smooth amount slider (Telegram-style).
+ *
+ * Visual position is a plain Float — updated synchronously on every pointer
+ * move, no coroutines during drag (that was the jank source). Soft spring
+ * only runs once, on finger-up, to settle on the nearest 50 мл step.
+ * Bubble body + overlapping tail (no seam).
  */
 @Composable
 private fun WaterAmountSlider(
@@ -327,42 +314,50 @@ private fun WaterAmountSlider(
 ) {
     val density = LocalDensity.current
     var trackWidthPx by remember { mutableFloatStateOf(0f) }
-
-    // Visual fraction — continuous, animated with a soft spring on release.
-    val visual = remember {
-        Animatable(((valueMl - minMl).toFloat() / (maxMl - minMl).toFloat()).coerceIn(0f, 1f))
-    }
     var dragging by remember { mutableStateOf(false) }
 
-    // External reset (after add) → soft spring back.
-    LaunchedEffect(valueMl) {
-        if (!dragging) {
-            val target = ((valueMl - minMl).toFloat() / (maxMl - minMl).toFloat()).coerceIn(0f, 1f)
-            if (kotlin.math.abs(target - visual.value) > 0.001f) {
-                visual.animateTo(
-                    target,
-                    animationSpec = spring(dampingRatio = 0.85f, stiffness = 180f),
-                )
-            }
-        }
-    }
+    fun mlToFrac(ml: Int): Float =
+        ((ml - minMl).toFloat() / (maxMl - minMl).toFloat()).coerceIn(0f, 1f)
 
-    fun snapMl(raw: Float): Int {
+    fun fracToMl(f: Float): Int {
+        val raw = minMl + f.coerceIn(0f, 1f) * (maxMl - minMl)
         val stepped = ((raw - minMl) / stepMl.toFloat()).roundToInt() * stepMl + minMl
         return stepped.coerceIn(minMl, maxMl)
     }
 
-    fun fractionToMl(f: Float): Int =
-        snapMl(minMl + f.coerceIn(0f, 1f) * (maxMl - minMl))
+    // Continuous visual 0..1. Mutated directly during drag.
+    var fraction by remember { mutableFloatStateOf(mlToFrac(valueMl)) }
+
+    // Soft settle animation (only used on release / external reset).
+    val settle = remember { Animatable(mlToFrac(valueMl)) }
+    val scope = rememberCoroutineScope()
+
+    // When parent resets amount (after add), glide back.
+    LaunchedEffect(valueMl) {
+        if (!dragging) {
+            val target = mlToFrac(valueMl)
+            if (kotlin.math.abs(target - fraction) > 0.001f) {
+                settle.snapTo(fraction)
+                settle.animateTo(target, spring(dampingRatio = 0.85f, stiffness = 200f))
+                fraction = settle.value
+            } else {
+                fraction = target
+            }
+        }
+    }
+
+    // While settle is running (and not dragging), drive fraction from it.
+    val renderFrac = if (dragging) fraction else {
+        // Prefer live fraction; settle is applied by LaunchedEffect / onDragEnd.
+        fraction
+    }
 
     val trackH = 28.dp
     val knobSize = 20.dp
     val endRpx = with(density) { (trackH / 2).toPx() }
     val knobRpx = with(density) { (knobSize / 2).toPx() }
-    val fraction = visual.value
     val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
-    val knobCenterPx = if (trackWidthPx > 0f) endRpx + fraction * travel else 0f
-    val scope = rememberCoroutineScope()
+    val knobCenterPx = if (trackWidthPx > 0f) endRpx + renderFrac * travel else 0f
 
     Column(modifier.fillMaxWidth()) {
         // Bubble
@@ -377,23 +372,21 @@ private fun WaterAmountSlider(
 
                 Canvas(Modifier.fillMaxWidth().height(46.dp)) {
                     val r = 15.dp.toPx()
-                    val left = bubbleLeft
-                    val right = bubbleLeft + bubbleW
+                    val tipX = knobCenterPx.coerceIn(
+                        bubbleLeft + r + 4.dp.toPx(),
+                        bubbleLeft + bubbleW - r - 4.dp.toPx(),
+                    )
+                    val half = 7.dp.toPx()
+                    val overlap = 2.dp.toPx()
                     val top = topPad
                     val bottom = top + bubbleH
-                    val tipX = knobCenterPx.coerceIn(left + r + 4.dp.toPx(), right - r - 4.dp.toPx())
-                    val half = 7.dp.toPx()
-                    // Overlap tail into the body by 2px so AA can't open a gap.
-                    val overlap = 2.dp.toPx()
 
-                    // Body
                     drawRoundRect(
                         color = LetifyColors.Water,
-                        topLeft = Offset(left, top),
+                        topLeft = Offset(bubbleLeft, top),
                         size = Size(bubbleW, bubbleH),
                         cornerRadius = CornerRadius(r, r),
                     )
-                    // Tail triangle overlapping the body
                     val tail = Path().apply {
                         moveTo(tipX - half, bottom - overlap)
                         lineTo(tipX, bottom + tailH)
@@ -435,8 +428,8 @@ private fun WaterAmountSlider(
                             if (trackWidthPx > 0f) {
                                 val t = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
                                 val f = ((offset.x - endRpx) / t).coerceIn(0f, 1f)
-                                scope.launch { visual.snapTo(f) }
-                                onValueChange(fractionToMl(f))
+                                fraction = f
+                                onValueChange(fracToMl(f))
                             }
                         },
                         onHorizontalDrag = { change, _ ->
@@ -444,22 +437,24 @@ private fun WaterAmountSlider(
                             if (trackWidthPx > 0f) {
                                 val t = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
                                 val f = ((change.position.x - endRpx) / t).coerceIn(0f, 1f)
-                                scope.launch { visual.snapTo(f) }
-                                onValueChange(fractionToMl(f))
+                                fraction = f
+                                onValueChange(fracToMl(f))
                             }
                         },
                         onDragEnd = {
-                            dragging = false
-                            // Soft spring to nearest step position
-                            val snapped = fractionToMl(visual.value)
-                            val target = ((snapped - minMl).toFloat() / (maxMl - minMl)).coerceIn(0f, 1f)
-                            scope.launch {
-                                visual.animateTo(
-                                    target,
-                                    animationSpec = spring(dampingRatio = 0.80f, stiffness = 160f),
-                                )
-                            }
+                            val snapped = fracToMl(fraction)
+                            val target = mlToFrac(snapped)
                             onValueChange(snapped)
+                            // Soft settle to exact step position
+                            scope.launch {
+                                settle.snapTo(fraction)
+                                settle.animateTo(
+                                    target,
+                                    spring(dampingRatio = 0.80f, stiffness = 160f),
+                                )
+                                fraction = settle.value
+                                dragging = false
+                            }
                         },
                         onDragCancel = {
                             dragging = false
@@ -468,12 +463,14 @@ private fun WaterAmountSlider(
                 },
             contentAlignment = Alignment.CenterStart,
         ) {
+            // Track
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(trackH)
                     .background(Letify.colors.container, RoundedCornerShape(999.dp)),
             )
+            // Fill — fully covers the knob
             if (trackWidthPx > 0f) {
                 val fillW = (knobCenterPx + endRpx).coerceIn(endRpx * 2f, trackWidthPx)
                 Box(
@@ -483,10 +480,13 @@ private fun WaterAmountSlider(
                         .background(LetifyColors.Water, RoundedCornerShape(999.dp)),
                 )
             }
+            // Knob — sub-pixel via graphicsLayer for smoothness
             if (trackWidthPx > 0f) {
                 Box(
                     Modifier
-                        .offset { IntOffset((knobCenterPx - knobRpx).roundToInt(), 0) }
+                        .graphicsLayer {
+                            translationX = knobCenterPx - knobRpx
+                        }
                         .size(knobSize)
                         .background(Color.White, CircleShape),
                 )

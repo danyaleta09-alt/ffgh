@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 163
-        versionName = "r163-capsule-history"
+        versionCode = 165
+        versionName = "r165-smooth-slider"
         vectorDrawables { useSupportLibrary = true }
     }
 
