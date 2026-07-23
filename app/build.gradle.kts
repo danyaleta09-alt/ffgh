@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 165
-        versionName = "r165-smooth-slider"
+        versionCode = 166
+        versionName = "r166-slider-nofight"
         vectorDrawables { useSupportLibrary = true }
     }
 

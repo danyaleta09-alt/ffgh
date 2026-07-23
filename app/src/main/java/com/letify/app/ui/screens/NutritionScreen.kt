@@ -69,6 +69,7 @@ import com.letify.app.ui.state.LocalAppState
 import com.letify.app.ui.theme.Letify
 import com.letify.app.ui.theme.LetifyColors
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 @Composable
@@ -296,12 +297,10 @@ private fun WaterGlass(
 }
 
 /**
- * Smooth amount slider (Telegram-style).
+ * Smooth amount slider.
  *
- * Visual position is a plain Float — updated synchronously on every pointer
- * move, no coroutines during drag (that was the jank source). Soft spring
- * only runs once, on finger-up, to settle on the nearest 50 мл step.
- * Bubble body + overlapping tail (no seam).
+ * Drag uses a plain Float (zero-lag, no coroutines). A spring Animatable
+ * runs only on finger-up and on external reset — never during the gesture.
  */
 @Composable
 private fun WaterAmountSlider(
@@ -313,8 +312,9 @@ private fun WaterAmountSlider(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    var trackWidthPx by remember { mutableFloatStateOf(0f) }
-    var dragging by remember { mutableStateOf(false) }
+    val water = LetifyColors.Water
+    val trackColor = Letify.colors.container
+    val scope = rememberCoroutineScope()
 
     fun mlToFrac(ml: Int): Float =
         ((ml - minMl).toFloat() / (maxMl - minMl).toFloat()).coerceIn(0f, 1f)
@@ -325,135 +325,73 @@ private fun WaterAmountSlider(
         return stepped.coerceIn(minMl, maxMl)
     }
 
-    // Continuous visual 0..1. Mutated directly during drag.
-    var fraction by remember { mutableFloatStateOf(mlToFrac(valueMl)) }
+    // Live drag position (sync writes).
+    var dragFrac by remember { mutableFloatStateOf(mlToFrac(valueMl)) }
+    // Spring position (async, only for settle / reset).
+    val springFrac = remember { Animatable(mlToFrac(valueMl)) }
+    var dragging by remember { mutableStateOf(false) }
 
-    // Soft settle animation (only used on release / external reset).
-    val settle = remember { Animatable(mlToFrac(valueMl)) }
-    val scope = rememberCoroutineScope()
+    // What we actually render.
+    val fraction = if (dragging) dragFrac else springFrac.value
+    val displayMl = fracToMl(fraction)
 
-    // When parent resets amount (after add), glide back.
+    // Soft spring when parent resets amount (after add).
     LaunchedEffect(valueMl) {
         if (!dragging) {
             val target = mlToFrac(valueMl)
-            if (kotlin.math.abs(target - fraction) > 0.001f) {
-                settle.snapTo(fraction)
-                settle.animateTo(target, spring(dampingRatio = 0.85f, stiffness = 200f))
-                fraction = settle.value
+            if (kotlin.math.abs(target - springFrac.value) > 0.0005f) {
+                springFrac.animateTo(target, spring(dampingRatio = 0.82f, stiffness = 140f))
+                dragFrac = springFrac.value
             } else {
-                fraction = target
+                dragFrac = target
+                springFrac.snapTo(target)
             }
         }
     }
 
-    // While settle is running (and not dragging), drive fraction from it.
-    val renderFrac = if (dragging) fraction else {
-        // Prefer live fraction; settle is applied by LaunchedEffect / onDragEnd.
-        fraction
+    // Tell parent about stepped value changes (for the "Добавить" label).
+    LaunchedEffect(displayMl) {
+        if (displayMl != valueMl) onValueChange(displayMl)
     }
 
+    val bubbleH = 30.dp
+    val tailH = 8.dp
+    val gap = 8.dp
     val trackH = 28.dp
-    val knobSize = 20.dp
-    val endRpx = with(density) { (trackH / 2).toPx() }
-    val knobRpx = with(density) { (knobSize / 2).toPx() }
-    val travel = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
-    val knobCenterPx = if (trackWidthPx > 0f) endRpx + renderFrac * travel else 0f
+    val totalH = bubbleH + tailH + gap + trackH
 
-    Column(modifier.fillMaxWidth()) {
-        // Bubble
-        Box(Modifier.fillMaxWidth().height(46.dp)) {
-            if (trackWidthPx > 0f) {
-                val bubbleW = with(density) { 74.dp.toPx() }
-                val bubbleH = with(density) { 30.dp.toPx() }
-                val tailH = with(density) { 8.dp.toPx() }
-                val topPad = with(density) { 4.dp.toPx() }
-                val bubbleLeft = (knobCenterPx - bubbleW / 2f)
-                    .coerceIn(0f, (trackWidthPx - bubbleW).coerceAtLeast(0f))
-
-                Canvas(Modifier.fillMaxWidth().height(46.dp)) {
-                    val r = 15.dp.toPx()
-                    val tipX = knobCenterPx.coerceIn(
-                        bubbleLeft + r + 4.dp.toPx(),
-                        bubbleLeft + bubbleW - r - 4.dp.toPx(),
-                    )
-                    val half = 7.dp.toPx()
-                    val overlap = 2.dp.toPx()
-                    val top = topPad
-                    val bottom = top + bubbleH
-
-                    drawRoundRect(
-                        color = LetifyColors.Water,
-                        topLeft = Offset(bubbleLeft, top),
-                        size = Size(bubbleW, bubbleH),
-                        cornerRadius = CornerRadius(r, r),
-                    )
-                    val tail = Path().apply {
-                        moveTo(tipX - half, bottom - overlap)
-                        lineTo(tipX, bottom + tailH)
-                        lineTo(tipX + half, bottom - overlap)
-                        close()
-                    }
-                    drawPath(tail, LetifyColors.Water)
-                }
-
-                Box(
-                    Modifier
-                        .offset {
-                            IntOffset(bubbleLeft.roundToInt(), topPad.roundToInt())
-                        }
-                        .width(with(density) { bubbleW.toDp() })
-                        .height(with(density) { bubbleH.toDp() }),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "$valueMl мл",
-                        color = Color.White,
-                        style = Letify.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                    )
-                }
-            }
-        }
-
-        Box(
+    Box(modifier.fillMaxWidth().height(totalH)) {
+        Canvas(
             Modifier
                 .fillMaxWidth()
-                .height(trackH)
-                .onSizeChanged { trackWidthPx = it.width.toFloat() }
+                .height(totalH)
                 .pointerInput(minMl, maxMl, stepMl) {
+                    val endR = trackH.toPx() / 2f
                     detectHorizontalDragGestures(
                         onDragStart = { offset ->
                             dragging = true
-                            if (trackWidthPx > 0f) {
-                                val t = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
-                                val f = ((offset.x - endRpx) / t).coerceIn(0f, 1f)
-                                fraction = f
-                                onValueChange(fracToMl(f))
-                            }
+                            val travel = (size.width - endR * 2f).coerceAtLeast(1f)
+                            dragFrac = ((offset.x - endR) / travel).coerceIn(0f, 1f)
                         },
                         onHorizontalDrag = { change, _ ->
                             change.consume()
-                            if (trackWidthPx > 0f) {
-                                val t = (trackWidthPx - endRpx * 2f).coerceAtLeast(1f)
-                                val f = ((change.position.x - endRpx) / t).coerceIn(0f, 1f)
-                                fraction = f
-                                onValueChange(fracToMl(f))
-                            }
+                            val travel = (size.width - endR * 2f).coerceAtLeast(1f)
+                            dragFrac = ((change.position.x - endR) / travel).coerceIn(0f, 1f)
                         },
                         onDragEnd = {
-                            val snapped = fracToMl(fraction)
+                            val snapped = fracToMl(dragFrac)
                             val target = mlToFrac(snapped)
-                            onValueChange(snapped)
-                            // Soft settle to exact step position
+                            // Hand off to spring, then release the drag flag so
+                            // render switches to springFrac mid-animation.
                             scope.launch {
-                                settle.snapTo(fraction)
-                                settle.animateTo(
-                                    target,
-                                    spring(dampingRatio = 0.80f, stiffness = 160f),
-                                )
-                                fraction = settle.value
+                                springFrac.snapTo(dragFrac)
                                 dragging = false
+                                springFrac.animateTo(
+                                    target,
+                                    spring(dampingRatio = 0.78f, stiffness = 120f),
+                                )
+                                dragFrac = springFrac.value
+                                onValueChange(snapped)
                             }
                         },
                         onDragCancel = {
@@ -461,35 +399,89 @@ private fun WaterAmountSlider(
                         },
                     )
                 },
-            contentAlignment = Alignment.CenterStart,
         ) {
-            // Track
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(trackH)
-                    .background(Letify.colors.container, RoundedCornerShape(999.dp)),
+            val w = size.width
+            val endR = trackH.toPx() / 2f
+            val knobR = 10.dp.toPx()
+            val travel = (w - endR * 2f).coerceAtLeast(1f)
+            val knobCx = endR + fraction * travel
+            val trackTop = (bubbleH + tailH + gap).toPx()
+            val trackCy = trackTop + trackH.toPx() / 2f
+
+            // Bubble
+            val bW = 74.dp.toPx()
+            val bH = bubbleH.toPx()
+            val bR = 15.dp.toPx()
+            val bLeft = (knobCx - bW / 2f).coerceIn(0f, (w - bW).coerceAtLeast(0f))
+            val bBottom = bH
+            val tipX = knobCx.coerceIn(bLeft + bR + 4.dp.toPx(), bLeft + bW - bR - 4.dp.toPx())
+            val half = 7.dp.toPx()
+            val overlap = 2.5.dp.toPx()
+
+            drawRoundRect(
+                color = water,
+                topLeft = Offset(bLeft, 0f),
+                size = Size(bW, bH),
+                cornerRadius = CornerRadius(bR, bR),
             )
-            // Fill — fully covers the knob
-            if (trackWidthPx > 0f) {
-                val fillW = (knobCenterPx + endRpx).coerceIn(endRpx * 2f, trackWidthPx)
+            drawPath(
+                Path().apply {
+                    moveTo(tipX - half, bBottom - overlap)
+                    lineTo(tipX, bBottom + tailH.toPx())
+                    lineTo(tipX + half, bBottom - overlap)
+                    close()
+                },
+                color = water,
+            )
+
+            // Track
+            drawRoundRect(
+                color = trackColor,
+                topLeft = Offset(0f, trackTop),
+                size = Size(w, trackH.toPx()),
+                cornerRadius = CornerRadius(endR, endR),
+            )
+            // Fill
+            val fillW = (knobCx + endR).coerceIn(endR * 2f, w)
+            drawRoundRect(
+                color = water,
+                topLeft = Offset(0f, trackTop),
+                size = Size(fillW, trackH.toPx()),
+                cornerRadius = CornerRadius(endR, endR),
+            )
+            // Knob
+            drawCircle(Color.White, radius = knobR, center = Offset(knobCx, trackCy))
+        }
+
+        // Label over bubble
+        var boxW by remember { mutableFloatStateOf(0f) }
+        val endRpx = with(density) { (trackH / 2).toPx() }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(bubbleH)
+                .onSizeChanged { boxW = it.width.toFloat() },
+        ) {
+            if (boxW > 0f) {
+                val travel = (boxW - endRpx * 2f).coerceAtLeast(1f)
+                val knobCx = endRpx + fraction * travel
+                val bWpx = with(density) { 74.dp.toPx() }
+                val bLeft = (knobCx - bWpx / 2f).coerceIn(0f, (boxW - bWpx).coerceAtLeast(0f))
                 Box(
                     Modifier
-                        .width(with(density) { fillW.toDp() })
-                        .height(trackH)
-                        .background(LetifyColors.Water, RoundedCornerShape(999.dp)),
-                )
-            }
-            // Knob — sub-pixel via graphicsLayer for smoothness
-            if (trackWidthPx > 0f) {
-                Box(
-                    Modifier
-                        .graphicsLayer {
-                            translationX = knobCenterPx - knobRpx
-                        }
-                        .size(knobSize)
-                        .background(Color.White, CircleShape),
-                )
+                        .offset { IntOffset(bLeft.roundToInt(), 0) }
+                        .width(74.dp)
+                        .height(bubbleH),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "$displayMl мл",
+                        color = Color.White,
+                        style = Letify.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                    )
+                }
             }
         }
     }
