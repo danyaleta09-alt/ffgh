@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 170
-        versionName = "r170-camera-ux"
+        versionCode = 171
+        versionName = "r171-camera-polish"
         vectorDrawables { useSupportLibrary = true }
     }
 

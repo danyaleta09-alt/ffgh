@@ -478,9 +478,8 @@ private fun OverlayContent(
         )
         AddOverlay.CameraCapture -> CameraCaptureScreen(
             onBack = animatedBack,
-            // After a successful shot, pop back to the media gallery so the
-            // new item is visible immediately (no "nothing happened" feeling).
-            onCaptured = animatedBack,
+            // Stay on camera; a corner thumbnail confirms the shot.
+            onCaptured = {},
         )
     }
 }
