@@ -10,6 +10,9 @@
         no need to relax usesCleartextTraffic.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
         Open Telegram via deep link from the bindings screen. On Android 11+

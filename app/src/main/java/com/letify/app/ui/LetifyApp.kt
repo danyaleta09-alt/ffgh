@@ -61,6 +61,8 @@ import com.letify.app.ui.screens.PlanScreen
 import com.letify.app.ui.screens.ProfileScreen
 import com.letify.app.ui.screens.ProgressGoalsScreen
 import com.letify.app.ui.screens.WaterHistoryScreen
+import com.letify.app.ui.screens.MediaScreen
+import com.letify.app.ui.screens.CameraCaptureScreen
 import com.letify.app.ui.state.LocalAppState
 import com.letify.app.ui.state.Tab
 import com.letify.app.ui.state.TransitionStyle
@@ -96,6 +98,8 @@ sealed interface AddOverlay {
     data object Logs : AddOverlay
     data object ProgressGoals : AddOverlay
     data object WaterHistory : AddOverlay
+    data object Media : AddOverlay
+    data object CameraCapture : AddOverlay
 }
 
 /**
@@ -284,6 +288,7 @@ fun LetifyApp() {
                                 onTiwi = { push(AddOverlay.Tiwi) },
                                 onOther = { push(AddOverlay.Other) },
                                 onProgressDetail = { push(AddOverlay.ProgressGoals) },
+                                onMedia = { push(AddOverlay.Media) },
                                 onQuickScan = { push(AddOverlay.Tiwi) },
                                 onQuickWeight = { push(AddOverlay.Weight) },
                             )
@@ -402,6 +407,7 @@ fun LetifyApp() {
                                 // Progress-Goals screen mounted underneath.
                                 onPushWeight = { rootSheet = AddOverlay.Weight },
                                 onPushSleep = { rootSheet = AddOverlay.Sleep },
+                                onPushCamera = { push(AddOverlay.CameraCapture) },
                             )
                         }
                     }
@@ -440,6 +446,7 @@ private fun OverlayContent(
     onPushWeight: () -> Unit = {},
     onPushSleep: () -> Unit = {},
     onPushBindings: () -> Unit = {},
+    onPushCamera: () -> Unit = {},
 ) {
     when (current) {
         is AddOverlay.Habit -> AddHabitScreen(onBack = animatedBack, editId = current.editId)
@@ -464,6 +471,14 @@ private fun OverlayContent(
             onBack = animatedBack,
             onAddWeight = onPushWeight,
             onAddSleep = onPushSleep,
+        )
+        AddOverlay.Media -> MediaScreen(
+            onBack = animatedBack,
+            onOpenCamera = onPushCamera,
+        )
+        AddOverlay.CameraCapture -> CameraCaptureScreen(
+            onBack = animatedBack,
+            onCaptured = { /* stay on camera; media list refreshes */ },
         )
     }
 }

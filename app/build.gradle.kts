@@ -12,8 +12,8 @@ android {
         applicationId = "com.letify.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 166
-        versionName = "r166-slider-nofight"
+        versionCode = 167
+        versionName = "r167-media-camera"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -117,6 +117,12 @@ dependencies {
     // Compose animation/transition code is AOT-compiled on first run instead
     // of being interpreted/JIT'd mid-slide — kills the first-transition jank.
     implementation("androidx.profileinstaller:profileinstaller:1.3.1")
+
+    // CameraX — in-app camera for the Media screen (photo + long-press video).
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+    implementation("androidx.camera:camera-video:1.3.4")
 }
 
 kotlin {

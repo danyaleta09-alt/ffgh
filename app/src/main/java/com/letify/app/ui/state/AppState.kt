@@ -96,6 +96,15 @@ fun scheduleTextFor(days: Set<Int>): String {
 
 // ── Other entities ────────────────────────────────────────────────────────
 
+data class MediaItem(
+    val id: String,
+    val uri: String,
+    val isVideo: Boolean,
+    val aspectRatio: Float = 3f / 4f,
+    val durationLabel: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 data class WaterEntry(
     val ml: Int,
     val time: String,
@@ -440,6 +449,58 @@ class AppState(
     var waterTarget: Int
         get() = _waterTarget.value
         set(v) { _waterTarget.value = v; dataStore?.saveWaterTarget(v) }
+
+    // ── Media gallery (photos / videos from in-app camera) ────────────────
+    // Files live in filesDir/media/. Call [reloadMedia] once a Context is
+    // available (MediaScreen / app start) to hydrate the list from disk.
+    val mediaItems: SnapshotStateList<MediaItem> = mutableStateListOf()
+
+    fun reloadMedia(filesDir: java.io.File) {
+        val dir = java.io.File(filesDir, "media")
+        val loaded = if (dir.isDirectory) {
+            dir.listFiles()
+                ?.filter { it.isFile && (it.name.endsWith(".jpg") || it.name.endsWith(".mp4")) }
+                ?.sortedByDescending { it.lastModified() }
+                ?.map { f ->
+                    MediaItem(
+                        id = f.name,
+                        uri = f.toURI().toString(),
+                        isVideo = f.name.endsWith(".mp4"),
+                        aspectRatio = 3f / 4f,
+                        durationLabel = if (f.name.endsWith(".mp4")) "видео" else "",
+                        createdAt = f.lastModified(),
+                    )
+                }
+                .orEmpty()
+        } else emptyList()
+        mediaItems.clear()
+        mediaItems.addAll(loaded)
+    }
+
+    fun addMedia(
+        path: String,
+        isVideo: Boolean,
+        aspectRatio: Float = 3f / 4f,
+        durationLabel: String = "",
+    ) {
+        val f = java.io.File(path)
+        val item = MediaItem(
+            id = f.name,
+            uri = f.toURI().toString(),
+            isVideo = isVideo,
+            aspectRatio = aspectRatio,
+            durationLabel = durationLabel,
+            createdAt = f.lastModified(),
+        )
+        // De-dupe if already present (e.g. reload raced with capture).
+        mediaItems.removeAll { it.id == item.id }
+        mediaItems.add(0, item)
+    }
+
+    fun removeMedia(item: MediaItem) {
+        mediaItems.remove(item)
+        runCatching { java.io.File(java.net.URI(item.uri)).delete() }
+    }
 
     /** Log a water intake for right now (today). Persists immediately. */
     fun addWater(ml: Int, label: String, icon: String) {

@@ -67,6 +67,7 @@ fun ProfileScreen(
     onTiwi: () -> Unit = {},
     onOther: () -> Unit = {},
     onProgressDetail: () -> Unit = {},
+    onMedia: () -> Unit = {},
     onQuickScan: () -> Unit = {},
     onQuickWeight: () -> Unit = {},
 ) {
@@ -207,9 +208,9 @@ fun ProfileScreen(
             )
             QuickAction(
                 modifier = Modifier.weight(1f),
-                icon = "chart-2-outline",
-                label = "Прогресс",
-                onClick = onProgressDetail,
+                icon = "widget-bold-duotone",
+                label = "Медиа",
+                onClick = onMedia,
             )
         }
 
