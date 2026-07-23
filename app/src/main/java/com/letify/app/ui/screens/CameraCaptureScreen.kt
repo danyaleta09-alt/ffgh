@@ -441,7 +441,7 @@ fun CameraCaptureScreen(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 28.dp, bottom = 28.dp),
+                .padding(start = 28.dp, end = 28.dp, bottom = 28.dp),
         ) {
             // Last shot thumbnail (bottom-left) — stays on camera after capture
             Box(
