@@ -6,6 +6,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -64,6 +66,7 @@ import com.letify.app.ui.screens.ProgressGoalsScreen
 import com.letify.app.ui.screens.WaterHistoryScreen
 import com.letify.app.ui.screens.MediaScreen
 import com.letify.app.ui.screens.CameraCaptureScreen
+import com.letify.app.ui.screens.CameraPrewarm
 import com.letify.app.ui.state.LocalAppState
 import com.letify.app.ui.state.Tab
 import com.letify.app.ui.state.TransitionStyle
@@ -168,9 +171,16 @@ fun LetifyApp() {
     // + light scrim. Progress 0 = fully off-screen below, 1 = settled.
     // `cameraVisible` keeps the screen composed through the close animation.
     val cameraScope = rememberCoroutineScope()
+    val appContext = LocalContext.current
     var cameraVisible by remember { mutableStateOf(false) }
     val cameraProgress = remember { Animatable(0f) }
+    // Kick off ProcessCameraProvider.getInstance() as soon as the app is up
+    // (not when the user taps the camera button) so the HAL is already warm
+    // by the time it's actually needed — this is what removes the stutter
+    // right at the start of the slide-up.
+    LaunchedEffect(Unit) { CameraPrewarm.warm(appContext) }
     val openCamera: () -> Unit = {
+        CameraPrewarm.warm(appContext)
         cameraVisible = true
         cameraScope.launch {
             cameraProgress.animateTo(
@@ -476,7 +486,8 @@ fun LetifyApp() {
                         .graphicsLayer {
                             val p = cameraProgress.value.coerceIn(0f, 1f)
                             translationY = (1f - p) * size.height
-                        },
+                        }
+                        .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
                 ) {
                     CameraCaptureScreen(
                         onBack = closeCamera,
